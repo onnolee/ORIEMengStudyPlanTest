@@ -19,6 +19,35 @@ A web application that integrates with Cornell's Class Roster API to help studen
 - **All Concentrations**: Supports AOR, DA, FE, IT, MIE, SSO
 - **Universal Requirements**: Tracks core courses, project, practicum, credits
 
+## Installation
+
+### Option 1: Simple File Open
+1. Extract the zip file to a folder
+2. Open `index.html` in your web browser
+3. **Note**: Roster API may not work due to CORS restrictions with file:// protocol
+
+### Option 2: Local Web Server (Recommended)
+1. Extract the zip file to a folder
+2. Open a terminal in that folder
+3. Run a local web server:
+   
+   **Python 3:**
+   ```bash
+   python3 -m http.server 8080
+   ```
+   
+   **Python 2:**
+   ```bash
+   python -m SimpleHTTPServer 8080
+   ```
+   
+   **Node.js (if you have npx):**
+   ```bash
+   npx http-server -p 8080
+   ```
+
+4. Open your browser to `http://localhost:8080`
+
 ## Usage
 
 1. **Select Your Concentration**: Choose from the dropdown in the left sidebar

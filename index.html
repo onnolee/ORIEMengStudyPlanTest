@@ -385,13 +385,16 @@
                 </div>
 
                 <div class="card">
-                    <h2>Search Courses</h2>
+                    <h2>Browse Courses</h2>
                     <div class="form-group">
-                        <label for="search">Search by subject or number</label>
-                        <input type="text" id="search" placeholder="e.g., ORIE, CS 5785">
+                        <label for="search">Search by code, name, or department</label>
+                        <input type="text" id="search" placeholder="e.g., ORIE, 5580, optimization">
                     </div>
-                    <button id="searchBtn">Search Roster</button>
+                    <button id="searchBtn">Search</button>
                     <div id="searchResults" class="search-results"></div>
+                    <p style="font-size: 11px; color: #666; margin-top: 10px;">
+                        Showing courses from requirements database. Click to add to cart.
+                    </p>
                 </div>
 
                 <div class="card cart">
@@ -430,6 +433,6 @@
 
     <script src="validator.js"></script>
     <script src="requirements_data.js"></script>
-    <script src="app.js"></script>
+    <script src="app-no-api.js"></script>
 </body>
 </html>

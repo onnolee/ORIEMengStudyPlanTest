@@ -1,10 +1,6 @@
-// Main application logic
+// Main application logic - NO ROSTER API VERSION
 let validator = null;
 let cart = [];
-let rosterCache = {};
-
-// Cornell Class Roster API base URL
-const ROSTER_API_BASE = 'https://classes.cornell.edu/api/2.0';
 
 // Time slot mapping (8am to 9pm in 30-minute blocks)
 const TIME_SLOTS = [];
@@ -21,6 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     renderSchedule();
     updateRequirements();
+    populateCourseList();
 });
 
 function setupEventListeners() {
@@ -70,98 +67,65 @@ function saveAndUpdate() {
     updateRequirements();
 }
 
-async function searchCourses() {
-    const query = document.getElementById('search').value.trim();
-    const semester = document.getElementById('semester').value;
+function populateCourseList() {
+    // Pre-populate search results with all available courses
+    displaySearchResults(validator.courses);
+}
+
+function searchCourses() {
+    const query = document.getElementById('search').value.trim().toUpperCase();
     const resultsDiv = document.getElementById('searchResults');
     
     if (!query) {
-        resultsDiv.innerHTML = '<p style="padding: 10px; color: #999;">Enter a search term</p>';
+        displaySearchResults(validator.courses);
         return;
     }
     
-    resultsDiv.innerHTML = '<div class="loading">Searching roster...</div>';
+    // Filter courses by query
+    const filtered = validator.courses.filter(course => {
+        return course.code.includes(query) || 
+               (course.name && course.name.toUpperCase().includes(query)) ||
+               course.department.includes(query);
+    });
     
-    try {
-        // Determine if searching by subject or course number
-        const isSubjectSearch = /^[A-Z]+$/i.test(query);
-        const results = await searchRoster(query, semester, isSubjectSearch);
-        
-        displaySearchResults(results);
-    } catch (error) {
-        resultsDiv.innerHTML = `<p style="padding: 10px; color: #ef4444;">Error: ${error.message}</p>`;
-    }
-}
-
-async function searchRoster(query, semester, isSubjectSearch) {
-    // Convert semester code (SP26 -> 2026SP, FA25 -> 2025FA)
-    const year = '20' + semester.substring(2);
-    const term = semester.substring(0, 2) === 'SP' ? 'SP' : 'FA';
-    const rosterTerm = `${year}${term}`;
-    
-    try {
-        let url;
-        if (isSubjectSearch) {
-            // Search by subject (e.g., ORIE, CS)
-            url = `${ROSTER_API_BASE}/search/classes.json?roster=${rosterTerm}&subject=${query.toUpperCase()}`;
-        } else {
-            // Search by course number or title keyword
-            url = `${ROSTER_API_BASE}/search/classes.json?roster=${rosterTerm}&q=${encodeURIComponent(query)}`;
-        }
-        
-        console.log('Fetching:', url);
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-            throw new Error(`API returned ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        return data.data.classes || [];
-        
-    } catch (error) {
-        console.error('Roster API error:', error);
-        
-        // Check if it's a CORS error
-        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
-            throw new Error('CORS Error: The roster API cannot be accessed from this domain. See troubleshooting guide.');
-        }
-        
-        throw error;
-    }
+    displaySearchResults(filtered);
 }
 
 function displaySearchResults(courses) {
     const resultsDiv = document.getElementById('searchResults');
+    const concentration = document.getElementById('concentration').value;
     
     if (courses.length === 0) {
         resultsDiv.innerHTML = '<p style="padding: 10px; color: #999;">No courses found</p>';
         return;
     }
     
-    // Filter to only show courses we have in our requirements database
-    const validCourses = courses.filter(course => {
-        const courseCode = `${course.subject} ${course.catalogNbr}`;
-        return validator.courseLookup[courseCode];
-    });
-    
-    if (validCourses.length === 0) {
-        resultsDiv.innerHTML = '<p style="padding: 10px; color: #999;">No ORIE-relevant courses found. Try searching for ORIE, CS, DSSM, or other departments.</p>';
-        return;
-    }
+    // Sort courses by code
+    const sorted = courses.sort((a, b) => a.code.localeCompare(b.code));
     
     let html = '';
-    validCourses.forEach(course => {
-        const courseCode = `${course.subject} ${course.catalogNbr}`;
-        const inCart = cart.some(c => c.code === courseCode);
-        const ourCourse = validator.courseLookup[courseCode];
+    sorted.forEach(course => {
+        const inCart = cart.some(c => c.code === course.code);
+        
+        // Determine what requirements this course satisfies
+        const satisfies = [];
+        if (course.satisfies.general) {
+            satisfies.push(course.satisfies.general);
+        }
+        if (concentration && course.satisfies[concentration]) {
+            satisfies.push(course.satisfies[concentration]);
+        }
+        
+        const satisfiesText = satisfies.length > 0 ? 
+            satisfies.join(', ') : 
+            'No requirements';
         
         html += `
-            <div class="course-item ${inCart ? 'selected' : ''}" onclick="addToCart('${courseCode}', ${JSON.stringify(course).replace(/"/g, '&quot;')})">
-                <h3>${courseCode}</h3>
-                <p>${course.titleLong || ourCourse.name}</p>
-                <p class="credits">${ourCourse.credits} credits</p>
+            <div class="course-item ${inCart ? 'selected' : ''}" onclick="toggleCourse('${course.code}')">
+                <h3>${course.code}</h3>
+                <p>${course.name || 'No description'}</p>
+                <p style="font-size: 11px; color: #999; margin-top: 4px;">${satisfiesText}</p>
+                <p class="credits">${course.credits} credits</p>
             </div>
         `;
     });
@@ -169,53 +133,40 @@ function displaySearchResults(courses) {
     resultsDiv.innerHTML = html;
 }
 
-function addToCart(courseCode, rosterData) {
+function toggleCourse(courseCode) {
+    const inCart = cart.some(c => c.code === courseCode);
+    
+    if (inCart) {
+        removeFromCart(courseCode);
+    } else {
+        addToCart(courseCode);
+    }
+}
+
+function addToCart(courseCode) {
+    const course = validator.courseLookup[courseCode];
+    if (!course) return;
+    
     // Check if already in cart
     if (cart.some(c => c.code === courseCode)) {
         return;
     }
     
-    const ourCourse = validator.courseLookup[courseCode];
-    if (!ourCourse) return;
-    
-    // Get meeting times from roster data
-    let meetingTimes = [];
-    if (rosterData.enrollGroups) {
-        rosterData.enrollGroups.forEach(group => {
-            group.classSections.forEach(section => {
-                if (section.meetings) {
-                    section.meetings.forEach(meeting => {
-                        if (meeting.pattern && meeting.timeStart && meeting.timeEnd) {
-                            meetingTimes.push({
-                                days: parseDays(meeting.pattern),
-                                startTime: meeting.timeStart,
-                                endTime: meeting.timeEnd,
-                                type: section.ssrComponent || 'LEC'
-                            });
-                        }
-                    });
-                }
-            });
-        });
-    }
-    
+    // Add with placeholder meeting times (users can add times via modal later)
     cart.push({
         code: courseCode,
-        name: ourCourse.name,
-        credits: ourCourse.credits,
-        meetingTimes: meetingTimes
+        name: course.name,
+        credits: course.credits,
+        meetingTimes: []
     });
     
     updateCartDisplay();
     renderSchedule();
     updateRequirements();
     saveAndUpdate();
-}
-
-function parseDays(pattern) {
-    // Convert "MWF" or "TR" to array of day numbers (0=Mon, 4=Fri)
-    const dayMap = { M: 0, T: 1, W: 2, R: 3, F: 4 };
-    return pattern.split('').map(d => dayMap[d]).filter(d => d !== undefined);
+    
+    // Refresh search results to show selected state
+    searchCourses();
 }
 
 function removeFromCart(courseCode) {
@@ -224,6 +175,9 @@ function removeFromCart(courseCode) {
     renderSchedule();
     updateRequirements();
     saveAndUpdate();
+    
+    // Refresh search results to show deselected state
+    searchCourses();
 }
 
 function updateCartDisplay() {
@@ -239,11 +193,15 @@ function updateCartDisplay() {
     
     let html = '';
     cart.forEach(course => {
+        const timeInfo = course.meetingTimes.length > 0 ? 
+            `${course.meetingTimes.length} meeting time(s)` : 
+            'No times added';
+        
         html += `
             <div class="cart-item">
                 <div class="cart-item-info">
                     <h3>${course.code}</h3>
-                    <p>${course.credits} credits</p>
+                    <p>${course.credits} credits • ${timeInfo}</p>
                 </div>
                 <button class="remove-btn" onclick="removeFromCart('${course.code}')">Remove</button>
             </div>
@@ -328,6 +286,14 @@ function renderSchedule() {
             html += '</div>';
         }
     });
+    
+    // Add message if no meeting times
+    if (cart.length > 0 && cart.every(c => c.meetingTimes.length === 0)) {
+        html = '<div style="padding: 40px; text-align: center; color: #666;">' +
+               '<p>No meeting times added yet.</p>' +
+               '<p style="margin-top: 10px; font-size: 14px;">Course times can be added by looking them up on the <a href="https://classes.cornell.edu" target="_blank">Class Roster</a> and entering them manually.</p>' +
+               '</div>';
+    }
     
     gridDiv.innerHTML = html;
 }
